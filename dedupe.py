@@ -281,7 +281,7 @@ def find_conflicting_checksums(csums, graph):
             range_sets[range_val] = [hno]
 
     compatible = [value[0] for key, value in range_sets.items() if len(value) == 1]
-    #below line is pythonic, but a bit confusing.  sum used to merge list of lists
+    # a bit confusing:  `sum` is used to merge list of lists
     conflicting = sum([value for key, value in range_sets.items() if len(value) > 1],[])
     ranges = {key: value for key, value in range_sets.items() if len(value) > 1}
     return compatible, conflicting, ranges
@@ -381,7 +381,7 @@ def optimize_dedupe_group(dedupe_group):
 def process_partitions(partitions, graph, singleton_filter=False ) :
     """processing of individual sub-graph"""
     dedupe_groups = []
-    for part in partitions :
+    for part in partitions:
         files = [nodenum for nodenum in part if nodenum[0] == 'F']
         csums = [nodenum for nodenum in part if nodenum[0] == 'H']
 
@@ -396,32 +396,36 @@ def process_partitions(partitions, graph, singleton_filter=False ) :
 
 def build_graph_from_vectors(vector_set, show_subgraph=False) :
     """creates top-level fraph from set of vectors"""
-
     B = nx.Graph()
     for fno, hset in vector_set:
         B.add_node(FnameMap.encode(fno), bipartite=0)
-        for hno in hset :
-            if hno not in B :
+        for hno in hset:
+            if hno not in B:
                 B.add_node(ChecksumMap.encode(hno), bipartite=1)               
             B.add_edge(FnameMap.encode(fno), ChecksumMap.encode(hno))
     return B
 
 
 def resolve_file_names(files):
-    resolved_files = [FnameMap.get_name_using_encoded_id(fno) for fno in files]
-    return resolved_files
+    return map(FnameMap.get_name_using_encoded_id, files)
 
 def resolve_csums(csums):
-    resolved_checksums = [ChecksumMap.get_hval_using_encoded_id(hno) for hno in csums]
-    return resolved_checksums
+    return map(ChecksumMap.get_hval_using_encoded_id, csums)
 
 def annotate_group(group):
-    group['csums'] = resolve_csums(group['csums'])
-    group['selected_csums'] = resolve_csums(group['selected_csums'])
-    group['files'] = resolve_file_names(group['files'])
-    group['selected_files'] = resolve_file_names(group['selected_files'])
-    group['subgroup'] = [annotate_group(subgroup) for subgroup in group['subgroups']]
-    return group
+    new_group = {
+        'csums'         : resolve_csums(group['csums']),
+        'selected_csums': resolve_csums(group['selected_csums']),
+        'files'         : resolve_file_names(group['files']),
+        'selected_files': resolve_file_names(group['selected_files']),
+        'subgroup'      : map(annotate_group, group['subgroups'])
+    }
+    
+    for key in group.keys():
+        if key not in ['csums', 'selected_csums', 'files', 'selected_files', 'subgroup']:
+            new_group[key] = group[key]
+
+    return new_group
 
 def graph_analysis(vector_set) :
     """top level routine, partitions vector sets and identified common parent for a set of files"""
@@ -429,9 +433,7 @@ def graph_analysis(vector_set) :
     B = build_graph_from_vectors(vector_set)
     partitions = nx.connected_components(B)
     dedupe_groups = process_partitions(partitions, B, singleton_filter = True)
-
-    annotated_groups = [annotate_group(group) for group in dedupe_groups]
-    return annotated_groups
+    return map(annotate_group, dedupe_groups)
 
 
            
@@ -439,31 +441,27 @@ def graph_analysis(vector_set) :
 # Main
 #------------------------------------
 
-if __name__=="__main__":
-
-
+def build_parser():
     parser = OptionParser(usage="usage: %prog [options] whole_checksums [sorted_block_checksums]")
-
     parser.add_option("-c", "--checksum_type", type = 'string', default = "MD5", dest="hash_type",
                       help="format of checksum in input file, where checksum TYPE is MD% or SHA256",
                       metavar="TYPE")
-    
     parser.add_option("-m", "--min_blocks", type = 'int', default = 2, dest="min_blocks",
                       help="minimum number of BLOCKS that a file mush share to be considered a candidate for dedupe",
                       metavar="BLOCKS")   
-
     parser.add_option("-v", "--dump_vectors", default=False, action="store_true", dest="dump_vectors",
                       help="enables dumping of vectors to .vectors file for use with alternative analysis")
-
     parser.add_option("-d", "--debug", default=False, action="store_true", dest="debug",
                       help="logs information to console for debug purposes")    
-
     parser.add_option("-g", "--show_graph", default=False, action="store_true", dest="show_graphs",
                       help="displays sub-graphs to console for debug purposes")
-    
+    return parser
+
+
+def doALotOfStuff():
+    parser = build_parser()
     (options, args) = parser.parse_args()
     
-
     global display_graph_flag
     global debug
 
@@ -479,14 +477,14 @@ if __name__=="__main__":
             enable_subfile_analysis = True
         else:
             enable_subfile_analysis = False
-    else :
+    else:
         raise MissingInputFiles
         
     (d_file_base, ext) = string.rsplit(d_file, '.', 1)
     jdup_fname = d_file_base + '.json'      
     duplicates = find_duplicateFiles(d_file, json_duplicates_fname=jdup_fname)
 
-    if enable_subfile_analysis : 
+    if enable_subfile_analysis:
         (d_subfile_base, ext) = string.rsplit(dsub_file, '.', 1)
         jvec_fname = False
         lvec_fname = False
@@ -503,3 +501,7 @@ if __name__=="__main__":
         dedupe_out_fname = d_subfile_base + '.dedupe.json'
         print 'Outputting dedupe groups in JSON format to: {}'.format(dedupe_out_fname)
         jdump(dedupe_groups, dedupe_out_fname, pretty=True)
+
+
+if __name__=="__main__":
+    doALotOfStuff()

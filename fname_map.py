@@ -2,10 +2,19 @@ import string
 
 
 
+def decode(text):
+    """
+    strip off prefix and return numeric value
+    >>> decode('F:1')
+    1
+    """
+    (node_type, idx) = string.rsplit(text, ':', 1)
+    return int(idx)
+
+
 #---------------------------------------------------
 # Tables for mapping fname and hash values to numeric keys
 #---------------------------------------------------
-
 
 class FnameMap(object):
     """
@@ -48,7 +57,7 @@ class FnameMap(object):
 
     @classmethod
     def get_name_using_encoded_id(cls, eidx):
-        return cls.map2val[cls.decode(eidx)]
+        return cls.map2val[decode(eidx)]
     
     @classmethod
     def reset(cls):
@@ -63,16 +72,6 @@ class FnameMap(object):
         'F:1'
         """
         return 'F:{}'.format(idx)
-
-    @staticmethod
-    def decode(text):
-        """
-        strip off prefix and return numeric value
-        >>> FnameMap.decode('F:1')
-        1
-        """
-        (node_type, idx) = string.rsplit(text, ':', 1)
-        return int(idx)
 
 
 
@@ -125,9 +124,9 @@ class ChecksumMap:
     counts = []
 
     @classmethod
-    def get_id(cls, hval) :
+    def get_id(cls, hval):
         """Maps hashes to unique hash numbers and maintains mapping tables"""
-        fingerprint = hval['c']+hval['r'] #include range in checksum name
+        fingerprint = hval['c'] + hval['r'] #include range in checksum name
         if fingerprint in cls.map2idx:
             idx = cls.map2idx[fingerprint]
             cls.counts[idx] += 1
@@ -149,11 +148,11 @@ class ChecksumMap:
 
     @classmethod
     def get_hval_using_encoded_id(cls, eidx):
-        return cls.map2hval[cls.decode(eidx)]
+        return cls.map2hval[decode(eidx)]
         
     @classmethod
     def get_range_using_encoded_id(cls, eidx):
-        return cls.map2hval[cls.decode(eidx)]['r']
+        return cls.map2hval[decode(eidx)]['r']
     
     @classmethod
     def get_count(cls,idx) :
@@ -174,16 +173,6 @@ class ChecksumMap:
         'H:1'
         """
         return 'H:{}'.format(idx)
-
-    @staticmethod
-    def decode(text):
-        """
-        strip off prefix and return numeric value
-        >>> ChecksumMap.decode('H:1')
-        1
-        """
-        (node_type, idx) = string.rsplit(text, ':', 1)
-        return int(idx)
  
 
 if __name__ == "__main__":
