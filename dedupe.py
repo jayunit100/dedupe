@@ -21,8 +21,8 @@ from fname_map import ChecksumMap
 #
 # python dedupe.py /users/doug/SW_Dev/dedupe/input_files/file_hashes_sorted.out
 # python dedupe.py /users/doug/SW_Dev/dedupe/input_files/file_hashes_sorted.out /users/doug/SW_Dev/dedupe/input_files/file_64k_subhashes.out
-# python /users/doug/SW_Dev/dedupe/dedupe.py /users/doug/SW_Dev/dedupe/test2/file_hashes.out /users/doug/SW_Dev/dedupe/test2/file_subhashes.out
-# python /users/doug/SW_Dev/dedupe/dedupe.py /users/doug/SW_Dev/dedupe/test3/file_hashes.out /users/doug/SW_Dev/dedupe/test3/file_subhashes.out
+# python /users/doug/SW_Dev/dedupe/dedupe.py -d /users/doug/SW_Dev/dedupe/test2/file_hashes.out /users/doug/SW_Dev/dedupe/test2/file_subhashes.out
+# python /users/doug/SW_Dev/dedupe/dedupe.py -d /users/doug/SW_Dev/dedupe/test3/file_hashes.out /users/doug/SW_Dev/dedupe/test3/file_subhashes.out
 #
 #------------------------------------------------
 
@@ -113,16 +113,18 @@ def jdump(val, fname, pretty=False):
             json.dump(val, fd)            
         fd.close()
 
-def dprint(val, debug, nl=False):
+def dprint(val, nl=False):
     "print debug output"
+    global debug
     if not debug:
         return
     if nl:
         print
     print val
 
-def dpprint(val, debug, nl=False):
+def dpprint(val, nl=False):
     "pretty-print debug output"
+    global debug
     if not debug:
         return
     if nl:
@@ -184,15 +186,13 @@ def create_duplicate_map (duplicates) :
 
 
 def find_duplicateFiles(d_file, pickle_duplicates_fname=False,
-                        json_duplicates_fname=False,
-                        debug=False,
-                        status=True) :
+                        json_duplicates_fname=False) :
     "find all duplicate files based on sorted MD5 hashes"
 
-    dprint('identify duplicates', status)
+    dprint('identify duplicates')
     duplicates = identify_duplicates(d_file)
     
-    dprint('dumping duplicates data structures', status)
+    dprint('dumping duplicates data structures')
     pdump(duplicates, pickle_duplicates_fname)
     jdump(duplicates, json_duplicates_fname)
     return duplicates
@@ -292,21 +292,19 @@ def generate_subfile_vectors(dsub_file, duplicates, min_blocks,
                              pickle_duplicates_fname=False,
                              pickle_vectorset_fname=False,
                              json_vectorset_fname=False,
-                             list_vectorset_fname = False,
-                             debug=False,
-                             status=True) :
+                             list_vectorset_fname = False) :
     "top level routine - convert file checksums to vectors, pruning non-shared entries"   
 
-    dprint('creating duplicates map', status, nl=True)
+    dprint('creating duplicates map', nl=True)
     if pickle_duplicates_fname :
-        dprint('restoring duplicates data structure', status)
+        dprint('restoring duplicates data structure')
         duplicates = pload(pickle_duplicates_fname) 
     dup_map = create_duplicate_map (duplicates)
 
-    dprint('processing sub-file hashes', status, nl=True)
+    dprint('processing sub-file hashes', nl=True)
     vector_set = construct_subhash_vectors(dsub_file, dup_map)
 
-    dprint('pruning', status, nl=True)
+    dprint('pruning', nl=True)
     pruned_vector_set = prune_vectors(vector_set, min_blocks)
     
     pdump(vector_set, pickle_vectorset_fname)
@@ -364,7 +362,9 @@ def path_intersection(paths):
 def process_subgraph(graph, dedupe_group) :
     files = dedupe_group['files']
     csums = dedupe_group['csums']
-    if False:
+    
+    global display_graph_flag   
+    if display_graph_flag:
         print 'Bipartite Sub-Graph'
         nx.draw(graph)
         plt.show()
@@ -374,7 +374,7 @@ def process_subgraph(graph, dedupe_group) :
         # create sub-graph with conflicting csums and fill set of files       
         new_graph = nx.subgraph(graph, files + conflicting_csums)
         partitions = nx.connected_components(new_graph)
-        if False:
+        if  display_graph_flag:
             nx.draw(new_graph)
             plt.show()
 
@@ -467,8 +467,6 @@ def graph_analysis(vector_set) :
     B = build_graph_from_vectors(vector_set)
     partitions = nx.connected_components(B)
     dedupe_groups = process_partitions(partitions, B, singleton_filter = True)
-    for group in dedupe_groups:
-        pprint.pprint(group)
 
     # To Do: remember to annotate groups with resolved checksums and file names
     return dedupe_groups
@@ -496,9 +494,6 @@ if __name__=="__main__":
     parser.add_option("-v", "--dump_vectors", default=False, action="store_true", dest="dump_vectors",
                       help="enables dumping of vectors to .vectors file for use with alternative analysis")
 
-    parser.add_option("-s", "--status", default=False, action="store_true", dest="status",
-                      help="prints status information to console")
-
     parser.add_option("-d", "--debug", default=False, action="store_true", dest="debug",
                       help="logs information to console for debug purposes")    
 
@@ -510,14 +505,10 @@ if __name__=="__main__":
     global d_file        #for IDLE, delete once idle_flag conditional removed
     global dsub_file     #for IDLE
 
-    global process_subgraph_depth
-    process_subgraph_depth = 0
-    global process_partitions_depth
-    process_partitions_depth = 0
-
+    global display_graph_flag
+    global debug
 
     debug = False                   #for IDLE -- enable debug message output
-    status = True                   #for IDLE -- enable general status logging
     enable_subfile_analysis = True  #for IDLE
     display_graph_flag = False      #for IDLE -- enables plotting of sub-graphs for debug
     min_blocks = 2                  #for IDLE, delete after debug
@@ -532,7 +523,6 @@ if __name__=="__main__":
         #dsub_file = '/users/doug/SW_Dev/dedupe/input_files/test_subhashes.out'
     else:
         debug = options.debug
-        status = options.status
         min_blocks = options.min_blocks
         display_graph_flag = options.show_graphs
         if args:
@@ -560,5 +550,6 @@ if __name__=="__main__":
         vector_set = generate_subfile_vectors(dsub_file, duplicates, min_blocks,
                                               json_vectorset_fname=jvec_fname,
                                               list_vectorset_fname=lvec_fname)
-        dprint('graph analysis', status)
-        graph_analysis(vector_set)
+        dprint('graph analysis')
+        dupe_groups = graph_analysis(vector_set)
+        dpprint(dupe_groups)
