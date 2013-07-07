@@ -11,7 +11,6 @@ from optparse import OptionParser
 import itertools
 import pprint       #used for debug only
 import pdb          #used for debug only
-#sys.path.append('/users/doug/SW_Dev/dedupe/')
 from fname_map import FnameMap
 from fname_map import ChecksumMap
 
@@ -43,7 +42,7 @@ from fname_map import ChecksumMap
 #------------------------------------
 
 def pload(fname):     
-    "load datastructure from pickle format file"
+    """load datastructure from pickle format file"""
     print 'pickle load ' + fname
     fd = open(fname, 'r')
     val = pickle.load(fd)
@@ -51,7 +50,7 @@ def pload(fname):
     return val
 
 def pdump(val, fname):     
-    "write out datastructure in pickle format"
+    """write out datastructure in pickle format"""
     if fname :
         print 'pickle dump ' + fname
         fd = open(fname, 'w+')
@@ -59,14 +58,14 @@ def pdump(val, fname):
         fd.close()
 
 def jload(fname):     
-    "loads datastructure from JSON format file"
+    """loads datastructure from JSON format file"""
     fd = open(fname, 'r')
     val = json.load(fd)
     fd.close()
     return val
 
 def jdump(val, fname, pretty=False):
-    "write out datastructure to file in JSON format"
+    """write out datastructure to file in JSON format"""
     if fname: 
         fd = open(fname, 'w+')
         if pretty:
@@ -76,7 +75,7 @@ def jdump(val, fname, pretty=False):
         fd.close()
 
 def dprint(val, nl=False):
-    "print debug output"
+    """print debug output"""
     global debug
     if not debug:
         return
@@ -85,7 +84,7 @@ def dprint(val, nl=False):
     print val
 
 def dpprint(val, nl=False):
-    "pretty-print debug output"
+    """pretty-print debug output"""
     global debug
     if not debug:
         return
@@ -105,7 +104,7 @@ def parse_fname(text):
 md5deep_file_re    = re.compile("([0-9abcdef]+)\s+(\S.+)$")
 
 def parse_md5deep_file_entry(text) :
-    "parses individual lines from md5deep"
+    """parses individual lines from md5deep"""
     parse = md5deep_file_re.search(text)
     if parse :
         return(parse.groups()[0],
@@ -115,7 +114,7 @@ def parse_md5deep_file_entry(text) :
         exit()
 
 def identify_duplicates(fname) :
-    "fname composed of lines containing <filename> <hash> where lines sorted by hash"
+    """fname composed of lines containing <filename> <hash> where lines sorted by hash"""
     duplicates = []
     fd = open(fname)
     last_val = ""
@@ -138,7 +137,7 @@ def identify_duplicates(fname) :
 
 
 def create_duplicate_map (duplicates) :
-    "creates a duplicate map, indexed by first duplicate file"
+    """creates a duplicate map, indexed by first duplicate file"""
     dup_map = {}
     for dup_group in duplicates :
         primary = dup_group.pop()
@@ -149,7 +148,7 @@ def create_duplicate_map (duplicates) :
 
 def find_duplicateFiles(d_file, pickle_duplicates_fname=False,
                         json_duplicates_fname=False) :
-    "find all duplicate files based on sorted MD5 hashes"
+    """find all duplicate files based on sorted MD5 hashes"""
 
     dprint('identify duplicates')
     duplicates = identify_duplicates(d_file)
@@ -169,7 +168,7 @@ def find_duplicateFiles(d_file, pickle_duplicates_fname=False,
 md5deep_subfile_re = re.compile("([0-9abcdef]+)\s+(\S.+)\soffset\s(\d+)-(\d+)$")
 
 def parse_md5deep_subfile_entry(text) :
-    "processing of individual subdile block hash line in md5deep"
+    """processing of individual subdile block hash line in md5deep"""
     parse = md5deep_subfile_re.search(text)
     if parse :
         return({'c': parse.groups()[0],
@@ -191,7 +190,7 @@ def construct_vector(name, hash_set, dup_map) :
 
 
 def construct_subhash_vectors(fname, dup_map) :
-    "collect set of checksums per file, substituting numeric id (fno, hno) for text values"
+    """collect set of checksums per file, substituting numeric id (fno, hno) for text values"""
 
     result = []    
     FnameMap.reset()        #initialize mapping tables
@@ -219,7 +218,7 @@ def construct_subhash_vectors(fname, dup_map) :
     return result
 
 def prune_vectors(vector_set, min_blocks) :
-    "only keep vectors containing at least 1 shared checksum"
+    """only keep vectors containing at least 1 shared checksum"""
     result = []
     
     for fno, hset in vector_set :
@@ -233,7 +232,7 @@ def prune_vectors(vector_set, min_blocks) :
 
 
 def output_vectors(name, vset):
-    "dumps vectors for use with alternative clustering tools"
+    """dumps vectors for use with alternative clustering tools"""
     if not name:
         return
     fd = open(name, 'w+')
@@ -247,7 +246,7 @@ def generate_subfile_vectors(dsub_file, duplicates, min_blocks,
                              pickle_vectorset_fname=False,
                              json_vectorset_fname=False,
                              list_vectorset_fname = False) :
-    "top level routine - convert file checksums to vectors, pruning non-shared entries"   
+    """top level routine - convert file checksums to vectors, pruning non-shared entries"""   
 
     dprint('creating duplicates map', nl=True)
     if pickle_duplicates_fname :
@@ -272,7 +271,7 @@ def generate_subfile_vectors(dsub_file, duplicates, min_blocks,
 #----------------------------
 
 def find_conflicting_checksums(csums, graph):
-    "find those block checksums that map to the same file region"
+    """find those block checksums that map to the same file region"""
     range_sets = {}
     for hno in csums:
         range_val = ChecksumMap.get_range_using_encoded_id(hno)
@@ -380,7 +379,7 @@ def optimize_dedupe_group(dedupe_group):
 
 
 def process_partitions(partitions, graph, singleton_filter=False ) :
-    "processing of individual sub-graph"
+    """processing of individual sub-graph"""
     dedupe_groups = []
     for part in partitions :
         files = [nodenum for nodenum in part if nodenum[0] == 'F']
@@ -396,7 +395,7 @@ def process_partitions(partitions, graph, singleton_filter=False ) :
 
 
 def build_graph_from_vectors(vector_set, show_subgraph=False) :
-    "creates top-level fraph from set of vectors"
+    """creates top-level fraph from set of vectors"""
 
     B = nx.Graph()
     for fno, hset in vector_set:
@@ -425,7 +424,7 @@ def annotate_group(group):
     return group
 
 def graph_analysis(vector_set) :
-    "top level routine, partitions vector sets and identified common parent for a set of files"
+    """top level routine, partitions vector sets and identified common parent for a set of files"""
 
     B = build_graph_from_vectors(vector_set)
     partitions = nx.connected_components(B)

@@ -37,7 +37,7 @@ class FnameMap(object):
     
     @classmethod
     def get_id(cls, text) :
-        "Maps file names to unique file numbers and maintains mapping tables"
+        """Maps file names to unique file numbers and maintains mapping tables"""
         idx = len(cls.map2val)
         cls.map2val.append(text)
         return idx
@@ -126,7 +126,7 @@ class ChecksumMap:
 
     @classmethod
     def get_id(cls, hval) :
-        "Maps hashes to unique hash numbers and maintains mapping tables"
+        """Maps hashes to unique hash numbers and maintains mapping tables"""
         fingerprint = hval['c']+hval['r'] #include range in checksum name
         if fingerprint in cls.map2idx:
             idx = cls.map2idx[fingerprint]
