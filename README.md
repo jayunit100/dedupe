@@ -1,6 +1,5 @@
 Dedupe
 ======
-Note:  Code is currently a work in progress.
 
 Python-based tool to detect deduplication candidates for inline dedupe.  
 Includes support both whole-file and sub-block use-cases.
@@ -33,13 +32,39 @@ Options:
     -c TYPE, --checksum_type=TYPE
                           format of checksum in input file, where checksum TYPE
                           is MD% or SHA256
-    -v, --dump_vectors
-                          enables dumping of vectors to .vectors file for use
+    -m BLOCKS, --min_blocks=BLOCKS
+                          minimum number of BLOCKS that a file mush share to be
+                          considered a candidate for dedupe
+    -v, --dump_vectors    enables dumping of vectors to .vectors file for use
                           with alternative analysis
-    -s, --status          prints status information to console
     -d, --debug           logs information to console for debug purposes
     -g, --show_graph      displays sub-graphs to console for debug purposes
 
+
+## Sample Input Data Sets ##
+
+ 1. Simple data set for testing:
+       
+        input_files/test_hashes_sorted.out.zip     [whole file]
+        input_files/test_subhashes.out.zip         [sub file]
+    
+ 2. Large collection of files, includes whole-file and sub-file deduplication opportunities.  
+    shared sub-groups within data set:
+       
+        input_files/file_hashes_sorted.out.zip     [whole file]
+        input_files/file_64k_subhashes.out.zip     [sub file @ 64K granularity]
+        input_files/file_1m_subhashes.out.zip      [alternative sub file @ 1m granularity]
+       
+ 3. Small set of files with sub-groups:
+    
+        test2/file_hashes.out                     [dummy whole file, ho duplicates]
+        test2/file_subhashes.out                  [sub file -- medium complexty single partition]
+    
+ 4. small set of files sith sub-groups containing conflicting checksums:
+    
+        test3/file_hashes.out                     [dummy whole file, ho duplicates]
+        test3/file_subhashes.out                  [sub file -- more complex single partition]
+    
 
 ## General Approach ##
 
@@ -62,4 +87,12 @@ Options:
    - Graph based analysis using Networkx
        + Construct bipartite graph nodes =(files, checksums)
        + Identify connected sub-graphs
-       + Optimize sub-graphs
+          * determine sets of conflicting checksums, where conflict define as
+            as set of checksums that map to the same range (offset) within the file
+          * all non-conflicting checksums below to the top-level group, and prune 
+            from sub-graph
+          * partition remaining sub-graphs
+              - if partitions contain compatible sets of checksus, then structure
+                as sub-group
+              - if partition contains incompatible checksums, split subgraph
+                by removing edges (based on paths between conflicting checksum pairs)
