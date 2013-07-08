@@ -1,16 +1,18 @@
 import networkx as nx
 from networkx.algorithms import bipartite
+import uuid
 
 
 #----------------------------
 # Clustering and Subgraph Optimization
 #----------------------------
 
-def find_conflicting_checksums(csums, graph):
+def find_conflicting_checksums(csums, graph, checksummap):
     """find those block checksums that map to the same file region"""
     range_sets = {}
     for hno in csums:
-        range_val = ChecksumMap.get_range_using_encoded_id(hno)
+        raise ValueError('oops, hno is something like `(.*):(.*)`, and we want to use the second part to look up the hval')
+        range_val = checksummap.get_hval(hno)['r']
         if range_val in range_sets:
             range_sets[range_val].append(hno)
         else:
@@ -18,95 +20,78 @@ def find_conflicting_checksums(csums, graph):
 
     compatible = [value[0] for key, value in range_sets.items() if len(value) == 1]
     # a bit confusing:  `sum` is used to merge list of lists
-    conflicting = sum([value for key, value in range_sets.items() if len(value) > 1],[])
+    conflicting = sum([value for key, value in range_sets.items() if len(value) > 1], [])
     # a dictionary comprehension ???
     ranges = {key: value for key, value in range_sets.items() if len(value) > 1}
     return compatible, conflicting, ranges
 
-def path_pairs (path):
-    """Converts path into a set of node pairs, where pairs are encoded as a _ delimitted string"""
-    result = []
-    for i, node1 in enumerate(path, start=1):
-        if i <len(path):
-            node2 = path[i]
-            if node1 > node2:
-                result.append('{}_{}'.format(node1, node2))    #hack to make set intersection work
-            else:
-                result.append('{}_{}'.format(node2, node1))
-    return (set(result))
-            
+
+def path_pairs(path):
+    """Converts path into a set of node pairs"""
+    pairs = zip(path, path[1:])
+    reverse_sorted_pairs = map(lambda xs: tuple(sorted(xs, reverse=True)), pairs)
+    return set(reverse_sorted_pairs)
+
+
 def path_intersection(paths):
-    """finds common segments among a set of paths"""
+    """finds common segments among a set of paths:
+    takes the paths in pairwise order:  from 'abcde' , it looks at 'ab', 'bc', 'cd', and 'de' """
     result = []
-    for i, path1 in enumerate(paths, start=1):
-        if i < len(paths):
-            path2 = paths[i]
-            common = path1.intersection(path2)
-            if len(common) > 0:
-                pairs = []
-                for node_pair_enc in common:
-                    pairs.append(node_pair_enc.split('_'))  #unencode node pair
-                result.append(pairs)
+    for path1, path2 in zip(paths, paths[1:]):
+        common = path1.intersection(path2)
+        if len(common) > 0:
+            result.append(list(common))
     return result
-            
-def process_subgraph(graph, dedupe_group) :
-    files = dedupe_group['files']
-    csums = dedupe_group['csums']
-    
-    global display_graph_flag   
-    if display_graph_flag:
-        print 'Bipartite Sub-Graph'
-        nx.draw(graph)
-        plt.show()
-    common_csums, conflicting_csums, conflict_details = find_conflicting_checksums(csums, graph)
+
+
+def process_subgraph(graph, files, csums):
+    """
+    what does this return?
+    """
+    _, conflicting_csums, conflict_details = find_conflicting_checksums(csums, graph)
 
     if len(conflict_details) > 0:
         # create sub-graph with conflicting csums and fill set of files       
         new_graph = nx.subgraph(graph, files + conflicting_csums)
         partitions = nx.connected_components(new_graph)
-        if  display_graph_flag:
-            nx.draw(new_graph)
-            plt.show()
 
         while len(partitions) == 1:
-            #break-up monolithic partition -- find paths between conflict pairs and break shortest path.
+            # break-up monolithic partition -- find paths between conflict pairs and break shortest path.
             paths = []
             for src, target in conflict_details.values():
                 paths.append(path_pairs(nx.shortest_path(new_graph, src, target)))
 
             common_paths = path_intersection(paths)
 
-            #for now, just break the first path and interate.  In future, may want to break multiple paths at once
+            # for now, just break the first path and interate.  In future, may want to break multiple paths at once
             if len(common_paths) == 0 or len(common_paths[0]) == 0:
                 raise ValueError('Error: Unexpected result - shoud be at least 1 common path pair')
-            pair = common_paths[0][0]    #arbitrarily pick first segment
+            pair = common_paths[0][0]    # arbitrarily pick first segment
             new_graph.remove_edge(pair[0], pair[1])
             partitions = nx.connected_components(new_graph)
-            common_csums, conflicting_csums, conflict_details = find_conflicting_checksums(csums, new_graph)
+            _, conflicting_csums, conflict_details = find_conflicting_checksums(csums, new_graph)
             
         subgroups = process_partitions(partitions, new_graph)
-        dedupe_group['subgroups'] = subgroups
-
     else:
         # no further sub-graphs
-        dedupe_group['subgroups'] = []
+        subgroups = []
 
-    #now compute combined result for group and it's subgroups
-    subgroup_csums = []
-    subgroup_files = []
-    tally = 0
-    for subgroup in dedupe_group['subgroups']:
-        for csum in subgroup['csums']:
-            subgroup_csums.append(csum) 
-        for fname in subgroup['files']:
-            subgroup_files.append(fname) 
+    #now compute combined result for group and its subgroups
+    subgroup_csums, subgroup_files, tally = [], [], 0
+    for subgroup in subgroups:
+        subgroup_csums.extend(subgroup['csums'])
+        subgroup_files.extend(subgroup['files'])
         tally += subgroup['savings']
-    dedupe_group['selected_files'] = set(dedupe_group['files']) - set(subgroup_files)
-    dedupe_group['selected_csums'] = set(dedupe_group['csums']) - set(subgroup_csums)
     for csum in csums:
         tally += len(nx.edges(graph, csum)) - 1
-    dedupe_group['savings'] = tally
-    return dedupe_group
+
+    return {
+        'selected_files': set(files) - set(subgroup_files),
+        'selected_csums': set(csums) - set(subgroup_csums),
+        'savings'       : tally,
+        'subgroups'     : subgroups
+    }
+
 
 def optimize_dedupe_group(dedupe_group):
     # NOT YET IMPLEMENTED
