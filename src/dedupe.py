@@ -1,101 +1,15 @@
 import sys
 import networkx as nx
 from networkx.algorithms import bipartite
-import matplotlib.pyplot as plt
-import cPickle as pickle
 import string
-import json
 import re
 import uuid
 from optparse import OptionParser
 import itertools
-import pprint       #used for debug only
-import pdb          #used for debug only
 from fname_map import FnameMap
 from fname_map import ChecksumMap
 
-#------------------------------------------------
-#
-# Sample Command Lines for debug:
-#
-# python dedupe.py /users/doug/SW_Dev/dedupe/input_files/file_hashes_sorted.out
-# python dedupe.py /users/doug/SW_Dev/dedupe/input_files/file_hashes_sorted.out /users/doug/SW_Dev/dedupe/input_files/file_64k_subhashes.out
-# python /users/doug/SW_Dev/dedupe/dedupe.py -d /users/doug/SW_Dev/dedupe/test2/file_hashes.out /users/doug/SW_Dev/dedupe/test2/file_subhashes.out
-# python /users/doug/SW_Dev/dedupe/dedupe.py -d /users/doug/SW_Dev/dedupe/test3/file_hashes.out /users/doug/SW_Dev/dedupe/test3/file_subhashes.out
-#
-#------------------------------------------------
 
-#-------------------------------------------------
-#
-# To Do:
-#
-#       1) Update command line parsing.  Replace with argparse since optparse depricated as of Python 2.7
-#       3) add code to promote preferred subgroup or file [is this needed?]
-#       5) Deallocate unused datastructures after pickling, where appropriate. [is this needed]
-#
-#------------------------------------------------------------------
-
-
-
-#------------------------------------
-# Misc helper func
-#------------------------------------
-
-def pload(fname):     
-    """load datastructure from pickle format file"""
-    print 'pickle load ' + fname
-    fd = open(fname, 'r')
-    val = pickle.load(fd)
-    fd.close()
-    return val
-
-def pdump(val, fname):     
-    """write out datastructure in pickle format"""
-    if fname :
-        print 'pickle dump ' + fname
-        fd = open(fname, 'w+')
-        pickle.dump(val, fd)
-        fd.close()
-
-def jload(fname):     
-    """loads datastructure from JSON format file"""
-    fd = open(fname, 'r')
-    val = json.load(fd)
-    fd.close()
-    return val
-
-def jdump(val, fname, pretty=False):
-    """write out datastructure to file in JSON format"""
-    if fname: 
-        fd = open(fname, 'w+')
-        if pretty:
-            json.dump(val, fd, indent=4)
-        else:
-            json.dump(val, fd)            
-        fd.close()
-
-def dprint(val, nl=False):
-    """print debug output"""
-    global debug
-    if not debug:
-        return
-    if nl:
-        print
-    print val
-
-def dpprint(val, nl=False):
-    """pretty-print debug output"""
-    global debug
-    if not debug:
-        return
-    if nl:
-        print
-    pprint.pprint(val)
-
-def parse_fname(text):
-    return string.rsplit(text, '.', 1)
-    
-        
 #--------------------------------------
 # File level deduplication
 #--------------------------------------
@@ -105,57 +19,39 @@ md5deep_file_re    = re.compile("([0-9abcdef]+)\s+(\S.+)$")
 
 def parse_md5deep_file_entry(text) :
     """parses individual lines from md5deep"""
-    parse = md5deep_file_re.search(text)
-    if parse :
-        return(parse.groups()[0],
+    try:
+        parse = md5deep_file_re.search(text)
+        return(parse.groups()[0],  # <-- can raise exception if regex doesn't match
                parse.groups()[1])
-    else:
-        print 'not found: ' + text
-        exit()
+    except:
+        raise ValueError('md5deep lines not found: ' + text)
 
-def identify_duplicates(fname) :
-    """fname composed of lines containing <filename> <hash> where lines sorted by hash"""
-    duplicates = []
-    fd = open(fname)
-    last_val = ""
-    file_set = []
-    for text in fd:
-        (val, name) = parse_md5deep_file_entry(text)
-        
-        if val <> last_val :
-            if len(file_set) > 1 :
-                duplicates.append(file_set)
-            last_val = val
-            file_set = []
-        file_set.append(name)
-            
-    if len(file_set) > 1 :
-        duplicates.append(file_set)
-        
-    fd.close()
+def identify_duplicates(lines):
+    """groups line names by line values.
+    doesn't assume anything about input order
+    actually shouldn't be responsible for using the parse function"""
+    duplicates = {}
+    for line in lines:
+        (key, name) = parse_md5deep_file_entry(line)
+        if not duplicates.has_key(key):
+            duplicates[key] = []
+        duplicates[key].append(name)
     return duplicates
 
 
-def create_duplicate_map (duplicates) :
+def create_duplicate_map(duplicates):
     """creates a duplicate map, indexed by first duplicate file"""
     dup_map = {}
-    for dup_group in duplicates :
-        primary = dup_group.pop()
-        for secondary in dup_group:
+    for dup_group in duplicates.values():
+        primary = dup_group[0]
+        for secondary in dup_group[1:]:
             dup_map[secondary] = primary
     return dup_map
 
 
-def find_duplicateFiles(d_file, pickle_duplicates_fname=False,
-                        json_duplicates_fname=False) :
-    """find all duplicate files based on sorted MD5 hashes"""
-
-    dprint('identify duplicates')
-    duplicates = identify_duplicates(d_file)
-    
-    dprint('dumping duplicates data structures')
-    pdump(duplicates, pickle_duplicates_fname)
-    jdump(duplicates, json_duplicates_fname)
+def find_duplicateFiles(lines):
+    """find all duplicate files based on MD5 hashes"""
+    duplicates = identify_duplicates(lines)
     return duplicates
    
     
@@ -168,17 +64,17 @@ def find_duplicateFiles(d_file, pickle_duplicates_fname=False,
 md5deep_subfile_re = re.compile("([0-9abcdef]+)\s+(\S.+)\soffset\s(\d+)-(\d+)$")
 
 def parse_md5deep_subfile_entry(text) :
-    """processing of individual subdile block hash line in md5deep"""
+    """processing of individual subfile block hash line in md5deep"""
     parse = md5deep_subfile_re.search(text)
-    if parse :
+    if parse:
         return({'c': parse.groups()[0],
                 'r':'_{}_{}'.format(parse.groups()[2], parse.groups()[3])},
                parse.groups()[1])               
     else:
-        raise BadSubfileEntry(text)
+        raise ValueError('bad sub file entry: ' + text)
 
 
-def construct_vector(name, hash_set, dup_map) :
+def construct_vector(name, hash_set, dup_map):
     if name == "" :         #skipping - no file
         return False
     if name in dup_map:     #skipping -- duplicate
@@ -189,7 +85,7 @@ def construct_vector(name, hash_set, dup_map) :
             [ChecksumMap.get_id(hval) for hval in hash_set]]
 
 
-def construct_subhash_vectors(fname, dup_map) :
+def construct_subhash_vectors(fname, dup_map):
     """collect set of checksums per file, substituting numeric id (fno, hno) for text values"""
 
     result = []    
@@ -202,7 +98,7 @@ def construct_subhash_vectors(fname, dup_map) :
     for text in fd:
         (val, name) = parse_md5deep_subfile_entry(text)
         
-        if name <> last_name :
+        if name != last_name:
             vec = construct_vector(last_name, hash_set, dup_map)
             if vec:
                 result.append(vec)
@@ -221,49 +117,21 @@ def prune_vectors(vector_set, min_blocks) :
     """only keep vectors containing at least 1 shared checksum"""
     result = []
     
-    for fno, hset in vector_set :
+    for fno, hset in vector_set:
         newset = []
         for hno in hset:
             if ChecksumMap.get_count(hno) > 1:
                 newset.append(hno)
         if len(newset) >= min_blocks:
-            result.append([fno, newset])        
+            result.append([fno, newset])   
     return result
 
-
-def output_vectors(name, vset):
-    """dumps vectors for use with alternative clustering tools"""
-    if not name:
-        return
-    fd = open(name, 'w+')
-    for vec in vset:
-        fd.write('{}, {}'.format(vec, tuple))
-    fd.close()
-
        
-def generate_subfile_vectors(dsub_file, duplicates, min_blocks,
-                             pickle_duplicates_fname=False,
-                             pickle_vectorset_fname=False,
-                             json_vectorset_fname=False,
-                             list_vectorset_fname = False) :
+def generate_subfile_vectors(dsub_file, duplicates, min_blocks):
     """top level routine - convert file checksums to vectors, pruning non-shared entries"""   
-
-    dprint('creating duplicates map', nl=True)
-    if pickle_duplicates_fname :
-        dprint('restoring duplicates data structure')
-        duplicates = pload(pickle_duplicates_fname) 
-    dup_map = create_duplicate_map (duplicates)
-
-    dprint('processing sub-file hashes', nl=True)
+    dup_map = create_duplicate_map(duplicates)
     vector_set = construct_subhash_vectors(dsub_file, dup_map)
-
-    dprint('pruning', nl=True)
     pruned_vector_set = prune_vectors(vector_set, min_blocks)
-    
-    pdump(vector_set, pickle_vectorset_fname)
-    jdump(vector_set, json_vectorset_fname)
-    output_vectors(list_vectorset_fname, vector_set)
-  
     return pruned_vector_set
 
 #----------------------------
@@ -283,6 +151,7 @@ def find_conflicting_checksums(csums, graph):
     compatible = [value[0] for key, value in range_sets.items() if len(value) == 1]
     # a bit confusing:  `sum` is used to merge list of lists
     conflicting = sum([value for key, value in range_sets.items() if len(value) > 1],[])
+    # a dictionary comprehension ???
     ranges = {key: value for key, value in range_sets.items() if len(value) > 1}
     return compatible, conflicting, ranges
 
@@ -478,7 +347,7 @@ def doALotOfStuff():
         else:
             enable_subfile_analysis = False
     else:
-        raise MissingInputFiles
+        raise ValueError('missing input files')
         
     (d_file_base, ext) = string.rsplit(d_file, '.', 1)
     jdup_fname = d_file_base + '.json'      

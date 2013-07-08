@@ -26,6 +26,17 @@ Usage:
 
     dedupe.py [options] whole_checksums [sorted_block_checksums]
 
+Examples:
+
+    $ python dedupe.py ./input_files/file_hashes_sorted.out
+    
+    $ python dedupe.py ./input_files/file_hashes_sorted.out   ./input_files/file_64k_subhashes.out
+    
+    $ python dedupe.py -d ./test2/file_hashes.out   ./test2/file_subhashes.out
+    
+    $ python dedupe.py -d ./test3/file_hashes.out   ./test3/file_subhashes.out
+
+
 Options:
 
     -h, --help            show this help message and exit
